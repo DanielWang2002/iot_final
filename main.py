@@ -4,6 +4,10 @@ import librosa
 from time import sleep
 import playsound
 import threading
+import socket
+import random
+
+socket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #TCP宣告
 
 def playMusic(filename: str):
     playsound.playsound(filename)
@@ -41,13 +45,16 @@ def main():
 
     # somehow tap into the most recent 30-100ms of audio.  
     # Assume we get 44 kHz mono back
-    filename = './music.mp3'
+    filename = './一分鐘聽古典 - 10 貝多芬 給愛麗絲.mp3'
     y, sr = librosa.load(filename, sr=None)
     music = []
     for i in range(0, len(y), int(sr/10)):
             music.append(list(y)[i:i+sr])
 
     ledval = []
+
+    socket2.connect(("172.20.10.11",9487))
+    socket2.send("open".encode())
 
     play(filename)
 
@@ -65,10 +72,15 @@ def main():
         ledval = np.round(np.maximum(0, np.minimum(nleds, 
                                                     ledsPerDoubling * np.log2(binval) 
                                                     + offsets)))
-        print(printLed(ledval))
+        # for i in range(len(ledval)): ledval[i] = random.randint(0, 8)
+        # print(printLed(ledval))
+        print(ledval)
+        socket2.send(str(ledval).encode())
         sleep(0.1)
+
         # print(ledval)
         # Now illuminate ledval[i] LEDs in column i (0..7) ...
+    socket2.send("close".encode())
 
 if __name__ == '__main__':
     main()
