@@ -5,7 +5,6 @@ from time import sleep
 import playsound
 import threading
 import socket
-import random
 
 socket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #TCP宣告
 
@@ -13,10 +12,28 @@ def playMusic(filename: str):
     playsound.playsound(filename)
 
 def play(filename: str):
+    """
+        播放音樂檔案，使用threading
+    """
     t = threading.Thread(target=playMusic, args=(filename, ))
     t.start()
 
 def printLed(val: list):
+    """
+        將LED訊號以方塊文字來模擬在MAX7219上的樣子
+        
+        example:
+        
+        ■ □ □ □ □ □ ■ □
+        ■ □ ■ □ □ □ ■ □
+        ■ ■ ■ ■ ■ ■ ■ □
+        ■ ■ ■ ■ ■ ■ ■ □
+        ■ ■ ■ ■ ■ ■ ■ □
+        ■ ■ ■ ■ ■ ■ ■ □
+        ■ ■ ■ ■ ■ ■ ■ □
+        ■ ■ ■ ■ ■ ■ ■ ■
+
+    """
     content = ""
     for i in range(len(val), 0, -1):
         for k in range(len(val)):
@@ -27,59 +44,49 @@ def printLed(val: list):
     return content
 
 def main():
-    fftsize = 4096  # about 100ms at 44 kHz; each bin will be ~ 10 Hz
-    # Band edges to define 8 octave-wide ranges in the FFT output
+    fftsize = 4096
     binedges = [8, 16, 32, 64, 128, 256, 512, 1024, 2048]
     nbins = len(binedges)-1
-    # offsets to get our 48 dB range onto something useful, per band
     offsets = [4, 4, 4, 4, 6, 8, 10, 12]
-    # largest value in ledval
     nleds = 8
-    # scaling of LEDs per doubling in amplitude
     ledsPerDoubling = 1.0
-    # initial value of per-band energy history
     binval = 0.001 * np.ones(nbins, np.float)
     newbinval = np.zeros(nbins, np.float)
-    # How rapidly the displays decay after a peak (depends on how often we're called)
     decayConst = 0.9
 
-    # somehow tap into the most recent 30-100ms of audio.  
-    # Assume we get 44 kHz mono back
-    filename = './一分鐘聽古典 - 10 貝多芬 給愛麗絲.mp3'
+    filename = './music.mp3'
+
+    # 載入音檔
     y, sr = librosa.load(filename, sr=None)
     music = []
+    # 將每秒的聲音拆成10份(若音檔為10秒，len(music) = 100)
     for i in range(0, len(y), int(sr/10)):
             music.append(list(y)[i:i+sr])
 
     ledval = []
 
+    # 建立socket連線
     socket2.connect(("172.20.10.11",9487))
     socket2.send("open".encode())
 
     play(filename)
 
     for m in music:
+        # 每100ms的音檔
         waveform = m
-        # find spectrum
+        # 利用Fast Fourier Transform處理音樂訊號，再轉換成1~8的LED訊號
         spectrum = np.abs(np.fft.rfft(waveform[:fftsize]))
-
-        # gather into octave bands    
         for i in range(nbins-1):
             newbinval[i] = np.mean(spectrum[binedges[i]:binedges[i+1]])
-        # Peak smoothing - decay slowly after large values
         binval = np.maximum(newbinval, decayConst*binval)
-        # Quantize into values 0..8 as the number of leds to light in each column
         ledval = np.round(np.maximum(0, np.minimum(nleds, 
                                                     ledsPerDoubling * np.log2(binval) 
                                                     + offsets)))
-        # for i in range(len(ledval)): ledval[i] = random.randint(0, 8)
-        # print(printLed(ledval))
-        print(ledval)
+        print(ledval) # ex: [4. 3. 2. 2. 1. 3. 5. 0.]
+        # 將LED訊號透過socket傳送
         socket2.send(str(ledval).encode())
         sleep(0.1)
 
-        # print(ledval)
-        # Now illuminate ledval[i] LEDs in column i (0..7) ...
     socket2.send("close".encode())
 
 if __name__ == '__main__':
